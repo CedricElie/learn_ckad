@@ -1,0 +1,121 @@
+Observability
+--------------
+
+Readiness probes
+---
+
+POD Status : Pending, ContainerCreating, Running
+POD Conditions: PodScheduled, Initialized, ContainersReady, Ready
+
+
+apiVersion: v1
+kind: Pod
+metadata:
+  creationTimestamp: null
+  labels:
+    run: simple-webapp
+  name: simple-webapp
+spec:
+  containers:
+  - image: simple-webapp
+    name: simple-webapp
+    ports:
+      - containerPort: 8080
+    readinessProbe:
+      httpGet:
+        path: /api/ready
+        port: 8080
+      initialDelaySeconds: 10
+      periodSeconds: 5
+
+For TCP probes
+
+readinessProbe:
+  tcpSocket:
+    port: 3306
+
+For command
+
+readinessProbe:
+  exec:
+    command:
+      - cat
+      - /app/is_ready
+
+initialDelaySeconds: 10 - this is to specify how much time for warmup
+periodSeconds: 5 - delay between two probes
+failureThreshold: 8 - number of times the probes should retry
+
+
+Liveness probes
+---
+
+apiVersion: v1
+kind: Pod
+metadata:
+  creationTimestamp: null
+  labels:
+    run: simple-webapp
+  name: simple-webapp
+spec:
+  containers:
+  - image: simple-webapp
+    name: simple-webapp
+    ports:
+      - containerPort: 8080
+    livenessProbe:
+      httpGet:
+        path: /api/ready
+        port: 8080
+      initialDelaySeconds: 10
+      periodSeconds: 5
+      failureThreshold: 8
+
+For TCP probes
+
+livenessProbe:
+  tcpSocket:
+    port: 3306
+
+For command
+
+livenessProbe:
+  exec:
+    command:
+      - cat
+      - /app/is_ready
+
+
+
+Logging
+---
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: event-simulator-pod
+spec:
+  containers:
+  - image: event-simulator
+    name: kodekloud/event-simulator
+  - image: image-processsor
+    name: some-image-processor
+
+For multiple containers within a pod, you must specify the name of the conainter
+
+
+ Monitoring
+ ---
+
+
+ metric-server can be instaled through a git clone of a repository
+
+ Then launch a simple : kubectl create -f deploy/1.8/app
+
+ then you can use the following commands:
+
+  > kubectl top nodes
+
+  > kubectl top pods 
+
+  

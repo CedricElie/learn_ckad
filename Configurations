@@ -1,0 +1,454 @@
+Configurations
+==============
+
+Edit a POD
+Remember, you CANNOT edit specifications of an existing POD other than the below.
+
+spec.containers[*].image
+spec.initContainers[*].image
+spec.activeDeadlineSeconds
+spec.tolerations
+
+Creating configmaps
+---------------
+
+Imperative wat
+> kubectl create <config-name> \
+          app-config  --from-literal=<key>=<value>
+
+kubectl create configmap app-config \
+                  --from-literal=APP_COLOR=blue \
+                  --from-literal=APP_MOD=prod
+
+> kubectl create configmap <config-name> --from-file=<path to file>
+
+kubectl create configmap app-config --from-file=app_config.properties
+
+
+
+Declarative way
+> kubectl create -f config-map.yaml
+
+---config-map.yaml -----
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-config
+data:
+  APP_COLOR: blue
+  APP_MODE: prod
+
+
+ConfigMap in prod
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: simple-webapp-color
+  labels:
+    name: simple-webapp-color
+spec:
+  containers:
+  - name: simple-webapp-color
+    image: simple-webapp-color
+    ports:
+      - containerPort: 8080
+    - envFrom:
+        - configMapRef:
+            name: app-config
+
+ConfigMaps can also be added as environment variables
+
+env:
+  - name: APP_COLOR
+    valueFrom:
+      configMapRef:
+        name: app-config
+        key: APP_COLOR
+
+volumes:
+- name: app-config-volume
+  configMap:
+    name: app-config
+
+
+
+SECRETS
+-------
+
+
+Secrets can be created the imperative way or the declarative way
+
+> kubeclt create secret generic \ 
+      <secret-name> --from-literal=<key>=<value>
+
+kubectl create secret generic \ 
+        my-secret --from-literal=DB_Host=mysql \
+        my-secret --from-literal=DB_User=root \
+        my-secret --from-literal=DB_Password=paswrd
+
+Secrets can be inputted from a fila
+
+> kubectl create secret generic \
+      <secret-name> --from-file=<path-to-file>
+
+kubectl create secret generic \
+      secret-from-file --from-tile=app_secret.properties
+
+
+
+
+
+The Declarative way
+
+> kubectl create -f secret-data.yaml
+
+
+secret-data.yaml
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: app-secret
+data:
+  DB_Host: mysql
+  DB_User: root
+  DB_Password: paswrd
+
+You need to ecnore the data sent into the secret-data
+
+echo -n 'mysql' | bas64
+echo -n 'root' | bas64
+echo -n 'paswrd' | bas64
+
+New file becomes
+
+
+secret-data.yaml
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: app-secret
+data:
+  DB_Host: =OONE!ejkx
+  DB_User: cm9vdA==
+  DB_Password: MLAEuce
+
+
+> Then run the > kubectl create -f secret-data.yaml
+
+> kubectl describe secret app-secret
+Will give you details on the secret without the content of the secret secret-data
+
+> kubectl get secret app-secret -o yaml
+Will give you the ouput of the secrets and the base64 encoded data
+
+
+To decode the values
+
+> echo -n '=OONE!ejkx' | base64 --decode
+
+Injecting the secret into a pod definition path-to-file
+
+pod-definition.yaml
+---
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: simple-webapp-color
+  labels:
+    name: simple-webapp-color
+spec:
+  containers:
+  - name: simple-webapp-color
+    image: simple-webapp-color
+    ports:
+      - containerPort: 8080
+    envFrom:
+      - secretRef:
+          name: app-secret
+
+Secrets can straightly be injectied as environment variables into pods
+
+
+envFrom:
+  - secretRef:
+      name: app-secret
+
+
+env:
+  - name: DB_Password
+    valueFrom:
+      secretKeyRef:
+        name: app-secret
+        key: DB_Password
+
+volumes:
+- name: app-secret-volume
+  secret:
+    secretName: app-secret
+
+
+=== A quick note about Secrets! ===
+Remember that secrets encode data in base64 format. Anyone with the base64 encoded secret can easily decode it. As such the secrets can be considered as not very safe.
+
+The concept of safety of the Secrets is a bit confusing in Kubernetes. The kubernetes documentation page and a lot of blogs out there refer to secrets as a “safer option” to store sensitive data. They are safer than storing in plain text as they reduce the risk of accidentally exposing passwords and other sensitive data. In my opinion it’s not the secret itself that is safe, it is the practices around it.
+
+Secrets are not encrypted, so it is not safer in that sense. However, some best practices around using secrets make it safer. As in best practices like:
+
+Not checking-in secret object definition files to source code repositories.
+Enabling Encryption at Rest for Secrets so they are stored encrypted in ETCD.
+Also the way kubernetes handles secrets. Such as:
+
+A secret is only sent to a node if a pod on that node requires it.
+Kubelet stores the secret into a tmpfs so that the secret is not written to disk storage.
+Once the Pod that depends on the secret is deleted, kubelet will delete its local copy of the secret data as well.
+Read about the protections and risks of using secrets here
+
+Having said that, there are other better ways of handling sensitive data like passwords in Kubernetes, such as using tools like Helm Secrets, HashiCorp Vault. I hope to make a lecture on these in the future.
+
+
+
+
+kubectl create secret generic db-secret2 \
+--from-literal=DB_Host=sql01 \
+--from-literal=DB_User=root \
+--from-literal=DB_Password=password123 \
+--dry-run=client -o yaml > db-secret.yaml
+
+
+
+SECURITY CONTEXT
+------------------
+
+pod-definition.yaml
+---
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: simple-webapp-color
+  labels:
+    name: simple-webapp-color
+spec:
+  containers:
+  - name: simple-webapp-color
+    image: simple-webapp-color
+    command: ["sleep","3600"]
+    securityContext:
+      runAsUser: 1000
+      capabilities:
+        add: ["MAC_ADMIN"]
+
+
+  Ressource requirements
+  --------------------
+
+
+  Minimum amount of CPU and memory requested by a containers
+
+  CPU : 0.5
+  MEM : 265m
+
+  You can modify these values during pod definition
+
+
+pod-definition.yaml
+---
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: simple-webapp-color
+  labels:
+    name: simple-webapp-color
+spec:
+  containers:
+  - name: simple-webapp-color
+    image: simple-webapp-color
+    command: ["sleep","3600"]
+    securityContext:
+      runAsUser: 1000
+      capabilities:
+        add: ["MAC_ADMIN"]
+    resources:
+      requests:
+        memory: "1Gi3"
+        cpu: 1
+
+  Ressource limits
+  --
+
+  by default, k8s lsets the limit  to 1 vcpu from the node or  or 512 Mi for the memory
+
+
+  pod-definition.yaml
+---
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: simple-webapp-color
+  labels:
+    name: simple-webapp-color
+spec:
+  containers:
+  - name: simple-webapp-color
+    image: simple-webapp-color
+    command: ["sleep","3600"]
+    securityContext:
+      runAsUser: 1000
+      capabilities:
+        add: ["MAC_ADMIN"]
+    resources:
+      requests:
+        memory: "1Gi3"
+        cpu: 1
+    limits:
+      memory: "2Gi"
+      cpu: 2
+
+
+
+Service Accounts
+---------
+
+
+> kubectl create serviceaccount dashboard-sa
+
+
+
+Taints and Tolerations
+----------------------
+
+> kubectl taint nodes node-name key=value:taint-effect
+
+kubectl taint nodes node1 app=blue:NoSchedule 
+kubectl taint nodes node01 spray=mortein:NoSchedule
+
+taint-effect defines what will happen to the pod if they do not tolerate the taint
+There are 3 taint-effects : 
+NoSchedule, 
+PreferNoSchedule, 
+NoExecute
+
+
+Tolerations are added to pods 
+
+
+
+  pod-definition.yaml
+---
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: simple-webapp-color
+  labels:
+    name: simple-webapp-color
+spec:
+  containers:
+  - name: simple-webapp-color
+    image: simple-webapp-color
+    command: ["sleep","3600"]
+    securityContext:
+      runAsUser: 1000
+      capabilities:
+        add: ["MAC_ADMIN"]
+    resources:
+      requests:
+        memory: "1Gi3"
+        cpu: 1
+    limits:
+      memory: "2Gi"
+      cpu: 2
+  tolerations:
+  - key: "app"
+    operator: "Equal"
+    value: "blue"
+    effect: "NoSchedule"
+
+A taint is shed on the master node at cluster creation.
+
+kubectl describe node kubemaster | grep Taint 
+
+apiVersion: v1
+kind: Pod
+metadata:
+  creationTimestamp: null
+  labels:
+    run: bee
+  name: bee
+spec:
+  containers:
+  - image: nginx
+    name: bee
+  tolerations:
+  - key: "spray"
+    operator: "Equal"
+    value: "mortein"
+    effect: "NoSchedule"
+
+To remove taint on nodes
+> kubectl taint nodes controlplane node-role.kubernetes.io/master:NoSchedule-
+
+
+Node Selectors
+--------------
+
+Label nodes
+> kubectl label nodes <node-name <label-key>=<label-value>
+kubectl label nodes node01 size=Large
+
+Now we create the pod with the node Selectors
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: data-processor
+spec:
+  containers:
+  - image: data-processor
+    name: data-processor
+  nodeSelector:
+    size: Large
+
+
+Node Affinity
+-------------
+
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: data-processor
+spec:
+  containers:
+  - image: data-processor
+    name: data-processor
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+        - matchExpressions:
+          - key: size
+            operator: In  
+            values:
+            - Large
+
+Node Affinity TYpes
+---
+
+Available
+requiredDuringSchedulingIgnoredDuringExecution
+preferredDuringSchedulingIgnoredDuringExecution
+
+
+Planned
+
+requiredDuringScheduingRequiredDuringExecution
+
+
+https://medium.com/@harioverhere/ckad-certified-kubernetes-application-developer-my-journey-3afb0901014

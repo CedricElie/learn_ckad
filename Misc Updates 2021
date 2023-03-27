@@ -1,0 +1,365 @@
+Misc Updates 2021
+----------------
+
+FROM Ubuntu
+
+RUN apt-get update
+RUN apt-get install python
+
+RUN pip install flask
+RUN pip install flask-msysql
+
+COPY . /opt/souce-code
+
+EXPOSE 8080
+
+ENTRYPOINT FLASK_APP=/opt/source-code/app.py flask run
+
+
+> docker build Dockerfile -t mmumshad/my-custom-app
+
+To view layer build of an image
+
+> docker history mmumshad/simple-webapp
+
+
+--- AAA on K8S
+
+Auth mechanisms
+- Static Password File
+- Static Token File
+- certificates
+- Identity Services
+
+--- KubeConfig
+
+$HOME/.kube/config by default
+
+apiVersion: v1
+kind: Config
+current-context: my-kube-admin@my-kube-playground
+
+clusers:
+- name: my-kube-playground
+  cluster:
+    certificate-authority: /etc/kubernetes/pki/ca.crt
+    server: https://my-kube-playground:6443
+
+contexts:
+- name: my-kube-admin@my-kube-playground
+  context:
+    cluster: my-kube-playground
+    user: my-kube-admin
+    namespace: finance
+
+users:
+- name: my-kube-admin
+  user: 
+    client-certificate: /etc/kubernetes/pki/users/admin.crt
+    client-key: /etc/kubernetes/pki/users/admin.key
+
+> kubectl config view
+
+> kubectl config view --kubeconfig=my-custom-config
+
+> kubectl config use-context prod-user@production
+
+> kubectl config -h
+
+
+
+RBAC
+-----
+
+developer-role.yaml
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: developer
+rules:
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["list","get","create","update","delete"]
+- apiGroups: [""]
+  resources: ["configMap"]
+  verbs: ["create"]
+
+> kubectl create -f developer-role.yaml
+
+Now create the role binding
+
+
+devuser-developer-binding.yaml
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: devuser-developer-binding
+subjects:
+- kind: User
+  name: dev-user
+  apiGroup: rbac.authorization.k8s.io
+roleRef:
+  kind: Role
+  name: developer
+  apiGroup: rbac.authorization.k8s.io
+
+> kubectl create -f devuser-developer-binding.yaml
+
+
+check access
+
+
+> kubectl auth can-i create deployments
+yes
+> kubectl auth can-i delete nodes
+no
+
+> kubectl auth can-i create deployments --as dev-user
+no
+> kubectl auth can-i create pods --as dev-user
+yes
+
+> kubectl auth can-i create pods --as dev-user --namespace test
+no
+
+
+Cluster Roles
+--------
+
+To view an exhaustive list of namespaced and non namespaced objects :
+
+> kubectl api-resources --namespaced=true
+
+> kubectl api-resources --namespaced=false
+
+
+cluster-admin-role.yaml
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: cluster-administrator
+rules:
+- apiGroups: [""]
+  resources: ["nodes"]
+  verbs: ["list","get","create","delete"]
+
+
+> kubectl create -f cluster-admin-role.yaml
+
+Now we need to link the role to the user
+
+cluster-admin-role-binding.yaml
+---
+
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: cluster-admin-role-binding
+subjects:
+- kind: User
+  name: cluster-admin
+  apiGroup: rbac.authorization.k8s.io
+roleRef:
+  kind: ClusterRole
+  name: cluster-administrator
+  apiGroup: rbac.authorization.k8s.io
+
+> kubectl create -f cluster-admin-role-binding.yaml
+
+
+Admission Controllers
+----------
+
+
+View enabled admission controllers
+
+> kube-apiserver -h | grep enable-admission-plugins
+
+> kubectl exec kube-apiserver-controlplane -n kube-system -- kube-apiserver -h | grep enable-admission-plugins
+
+To add an admission controler
+
+edit : /etc/kubernetes/manifest/kube-apiserver.yaml and modify the line with - --enable-admission-plugins
+
+Since the kube-apiserver is running as pod you can check the process to see enabled and disabled plugins.
+
+ps -ef | grep kube-apiserver | grep admission-plugins
+
+
+Validating and Mutating Admission Controller
+--------
+
+
+There are two types of admission controllers
+- Validating admission controller
+- Mutating admission controllers
+
+Mutating admission controllers are always invoked before validating admission controllers
+
+Custom admission controllers can be created using webhook
+
+1- Deploy a webhook server in go or python
+2- Configuring Admission Webhook
+
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingWebhookConfiguration
+metadata:
+  name: "pod-policy.example.com"
+webhook:
+- name: "pod-policy.example.com"
+  clientConfig:
+    url: "https://external-server.example.com"
+    service:
+      namespace: "webhook-namespace"
+      name: "webhook-service"
+    ca-bundle: "Ci0tLS0tQk...tLS0K"
+  rules:
+    - apiGroups: [""]
+      apiVersions: ["v1"]
+      operations: ["CREATE"]
+      resources: ["pods"]
+      scope: "Namespaced"
+
+
+
+API Versions:
+--------------
+
+kubectl convert is a plugin that must be installed, not installed by default 
+
+> curl -LO https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl-convert
+
+> kubectl convert -f <old-file> --output-version <new-api>
+
+> kubectl-convert -f nginx.yaml --output-version apps/v1
+
+
+Custom Resource Definition ( CRD )
+----------------------------
+
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: flighttickets.flights.com
+spec:
+  scope: Namespaced
+  groups: flights.com
+  names:
+    kind: FlightTicket
+    singular: flightticket
+    plural: flighttickets
+    shortnames:
+      - ft
+  version:
+    - name: v1
+      served: true
+      storage: true
+  schema:
+    openAPIV3Schema:
+      type: object
+      properties:
+        spec:
+          type: object
+          properties:
+            from:
+              type: string
+            to:
+              type: string
+            number:
+              type: integer
+              minimum: 1
+              maximum: 10
+
+
+> kubectl create -f
+
+
+Customer Controllers
+-------------------
+
+
+operatorhub.io
+
+
+Deployment Strategy - Blue Green
+---
+
+
+Recreate
+Rolling update
+
+Blue Green : New version (green) is deployed alongside with old version (blue)
+
+
+Canary : New version is deployed and part of user traffic is sent to it
+
+
+myapp-primary.yml
+----
+apiVersion:
+kind:
+metadata:
+  name: myapp-primary
+  labels:
+    app: myapp
+    type: front-end
+spec:
+  template:
+    metadata:
+      name: myapp-pod
+      labels:
+        version: v1
+        app: front-end
+    spec:
+      containers:
+      - name: app-container
+        image: myapp-image:1.0
+  replicas: 5
+  selector:
+    matchLabels:
+      app: front-end
+
+service-definition.yaml
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: my-service
+spec:
+  selector:
+    app: front-end
+
+myapp-canary.yml
+----
+apiVersion:
+kind:
+metadata:
+  name: myapp-canary
+  labels:
+    app: myapp
+    type: front-end
+spec:
+  template:
+    metadata:
+      name: myapp-pod
+      labels:
+        version: v2
+        app: front-end
+    spec:
+      containers:
+      - name: app-container
+        image: myapp-image:2.0
+  replicas: 1
+  selector:
+    matchLabels:
+      app: front-end
+
+
+
+
+
+
